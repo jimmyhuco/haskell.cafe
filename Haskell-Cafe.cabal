@@ -1,0 +1,18 @@
+name:               Haskell-Cafe
+version:            0.1.0.0
+description:        Please see README.md
+build-type:         Simple
+cabal-version:      >= 1.10
+
+author:             Jimmy Hu <jimmyhu.co@gmail.com>
+maintainer:         Jimmy Hu <jimmyhu.co@gmail.com>
+
+homepage:           https://github.com/jimmyhuco/haskell.cafe
+copyright:          2017 Jimmy Hu
+
+executable site
+  main-is:          site.hs
+  build-depends:    base == 4.*
+                  , hakyll == 4.9.*
+  ghc-options:      -threaded
+  default-language: Haskell2010

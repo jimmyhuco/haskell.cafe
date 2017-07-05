@@ -1,0 +1,19 @@
+---
+title: New Blog
+tags: Mind
+---
+
+I'm a thoughtful man, have enough ideas to share and be recorded. So, it's time to
+start a new blog.
+
+In fact, I have not written any blog for a long time. I just remembered I put my
+last blog down since I become a full-time leader. Every day is so busy that I
+don't have enough time to enjoy myself. I spent more time to take care my team
+and my product and my business.
+
+About a year ago, I brought all those things to put down. I started to learn
+Haskell that gives me the inspiration. I want to build something cool with tech
+I like. At the same time, I had more time with my family. I enjoy myself now,
+spend more time to play with my son. That's very important!
+
+OK, let's go!

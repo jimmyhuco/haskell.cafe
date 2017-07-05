@@ -1,0 +1,43 @@
+<div class="mdl-layout">
+    <header class="mdl-layout__header">
+        <div class="mdl-layout__header-row cafe-color--blue">
+            <!-- Title -->
+            <a class="cafe-site-title mdl-color-text--white" href="/"><span class="mdl-layout-title">$title$ >>= (&lambda;Haskell . Cafe)</span></a>
+            <!-- Add spacer, to align navigation to the right -->
+            <div class="mdl-layout-spacer"></div>
+            <!-- Navigation. We hide it in small screens. -->
+            <nav class="mdl-navigation mdl-layout--large-screen-only">
+                <a class="mdl-navigation__link" href="/">Home</a>
+                <a class="mdl-navigation__link" href="/archive.html">Archive</a>
+                <a class="mdl-navigation__link" href="/about.html">About</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="mdl-layout__content">
+        <div class="page-content">
+        $for(posts)$
+
+            <section class="section--center mdl-grid mdl-grid--no-spacing mdl-shadow--2dp">
+                <div class="mdl-card mdl-cell mdl-cell--12-col">
+                    <div class="mdl-card__supporting-text">
+                        <h4><a href="$url$">$title$</a></h4>
+                        $if(teaser)$
+                            $teaser$
+                        $else$
+                            $body$
+                        $endif$
+
+                        <div><span class="mdl-color-text--grey-500">Posted on $date$</span></div>
+                    </div>
+                    <div class="mdl-card__actions">
+                        <a href="$url$" class="mdl-button">Read Article</a>
+                    </div>
+                </div>
+            </section>
+        $endfor$
+        </div>
+    </main>
+
+    $partial("templates/footer.html")$
+</div>

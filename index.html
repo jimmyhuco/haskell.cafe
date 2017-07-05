@@ -1,0 +1,34 @@
+---
+title: Home
+---
+
+<div class="cafe-layout mdl-layout mdl-color--grey-100">
+    $partial("templates/header.html")$
+    <div class="cafe-ribbon"></div>
+    <main class="cafe-main mdl-layout__content">
+        <div class="cafe-container mdl-grid">
+            <div class="mdl-cell mdl-cell--2-col mdl-cell--hide-tablet mdl-cell--hide-phone"></div>
+            <div class="cafe-content mdl-color--white mdl-shadow--4dp content mdl-color-text--grey-800 mdl-cell mdl-cell--8-col">
+                $for(postFirst)$
+                <div class="cafe-crumbs mdl-color-text--grey-500">
+                    $if(tags)$
+                    Tags are $tags$
+                    $endif$
+
+                    $if(date)$
+                    , posted on $date$
+                    $endif$
+                </div>
+                <h3>$title$</h3>
+                $body$
+                $endfor$
+                <hr>
+
+                <h4>and some my previous posts:</h4> 
+
+                $partial("templates/recentPosts.html")$
+            </div>
+        </div>
+        $partial("templates/footer.html")$
+    </main>
+</div>

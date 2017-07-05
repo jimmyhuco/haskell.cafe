@@ -1,0 +1,14 @@
+---
+title: About It
+---
+
+*** What's haskell.cafe?
+    It's a personal blog, sharing some my ideas and learning notes.
+  
+*** Why do I choose to use the domain "haskell.cafe"?
+    Because I have learned so much from the [[http://haskell.org][Haskell]], it taught me thinking before hacking.
+    
+*** Who am I?
+   + A busy father of my car-mad boy, husband to a beautiful wife who guide me so much. 
+   + A programmer who is building something cool with tech he like.
+   + And ...

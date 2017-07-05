@@ -1,0 +1,155 @@
+---
+title: When I first meet the Hakyll
+tags: Frontend, Haskell, Hakyll
+---
+
+I want to work out a workflow to write some my ideas and notes, especially
+supporting [[http://orgmode.org][orgmode]] and static site. Regarding Haskell, [[http://jaspervdj.be/hakyll][Hakyll]] is undoubtedly the
+best one for me.
+
+Integration with [[http://pandoc.org][pandoc]] gives me orgmode support, including syntax highlighting
+and other goodies. It's a beast!
+
+But default theme and template support are very limited. As a newbie, I just
+keep the current template system, redesigned a new theme for me, at least I feel
+it's better.
+
+I will share some notes about the problems I met and solved when launching my
+site. If you're hurry, you can get the code first from my [[https://github.com/jimmyhuco/haskell.cafe][repo]].
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+1. You can use =teaserField= to implement the feature of "reading more".
+
+  #+BEGIN_SRC haskell
+  -- code in site.hs
+  let ctx =
+        constField "title" title `mappend`
+        listField "posts" (postCtx `mappend` (teaserField "teaser" "content")) (return posts) `mappend`
+        defaultContext
+
+
+  -- code in Hakyll library
+  teaserSeparator :: String
+  teaserSeparator = "<!--more-->"
+
+  -- | A context with "teaser" key which contain a teaser of the item.
+  -- The item is loaded from the given snapshot (which should be saved
+  -- in the user code before any templates are applied).
+  teaserField :: String           -- ^ Key to use
+              -> Snapshot         -- ^ Snapshot to load
+              -> Context String   -- ^ Resulting context
+  teaserField = teaserFieldWithSeparator teaserSeparator
+
+
+  --------------------------------------------------------------------------------
+  -- | A context with "teaser" key which contain a teaser of the item, defined as
+  -- the snapshot content before the teaser separator. The item is loaded from the
+  -- given snapshot (which should be saved in the user code before any templates
+  -- are applied).
+  teaserFieldWithSeparator :: String           -- ^ Separator to use
+                          -> String           -- ^ Key to use
+                          -> Snapshot         -- ^ Snapshot to load
+                          -> Context String   -- ^ Resulting context
+  teaserFieldWithSeparator separator key snapshot = field key $ \item -> do
+      body <- itemBody <$> loadSnapshot (itemIdentifier item) snapshot
+      case needlePrefix separator body of
+          Nothing -> fail $
+              "Hakyll.Web.Template.Context: no teaser defined for " ++
+              show (itemIdentifier item)
+          Just t -> return t
+  #+END_SRC
+
+  And you should take care of orgmode, you should use BEGIN block to insert html comment.
+
+  #+BEGIN_EXAMPLE
+  #+BEGIN_EXPORT html
+  <!--more-->
+  #+END_EXPORT
+  #+END_EXAMPLE
+
+2. Snapshots allow you to save an Item at any point during its compilation, so you can load it later.
+
+  #+BEGIN_SRC haskell
+  -- code in site.hs
+
+  match "posts/*" $ do
+    route $ setExtension "html"
+    compile $
+      pandocCompiler >>=
+      saveSnapshot "content" >>=
+      loadAndApplyTemplate "templates/post.html" (postCtxWithTags tags) >>=
+      loadAndApplyTemplate "templates/default.html" (postCtxWithTags tags) >>=
+      relativizeUrls
+
+  create ["archive.html"] $ do
+    route idRoute
+    compile $ do
+      posts <- recentFirst =<< loadAllSnapshots "posts/*" "content"
+      let archiveCtx =
+            listField "postRest" postCtx (return posts) `mappend`
+            constField "title" "Archives" `mappend`
+            defaultContext
+
+
+
+
+  -- code in Hakyll library
+
+  data CompilerResult a where
+      CompilerDone     :: a -> CompilerWrite -> CompilerResult a
+      CompilerSnapshot :: Snapshot -> Compiler a -> CompilerResult a
+      CompilerError    :: [String] -> CompilerResult a
+      CompilerRequire  :: (Identifier, Snapshot) -> Compiler a -> CompilerResult a
+
+
+  --------------------------------------------------------------------------------
+  -- | A monad which lets you compile items and takes care of dependency tracking
+  -- for you.
+  newtype Compiler a = Compiler
+      { unCompiler :: CompilerRead -> IO (CompilerResult a)
+      }
+
+  -- | Save a snapshot of the item. This function returns the same item, which
+  -- convenient for building '>>=' chains.
+  saveSnapshot :: (Binary a, Typeable a)
+              => Internal.Snapshot -> Item a -> Compiler (Item a)
+  saveSnapshot snapshot item = do
+      store  <- compilerStore <$> compilerAsk
+      logger <- compilerLogger <$> compilerAsk
+      compilerUnsafeIO $ do
+          Logger.debug logger $ "Storing snapshot: " ++ snapshot
+          Internal.saveSnapshot store snapshot item
+
+      -- Signal that we saved the snapshot.
+      Compiler $ \_ -> return $ CompilerSnapshot snapshot (return item)
+
+  loadAllSnapshots :: (Binary a, Typeable a)
+                  => Pattern -> Snapshot -> Compiler [Item a]
+  loadAllSnapshots pattern snapshot = do
+      matching <- getMatches pattern
+      mapM (\i -> loadSnapshot i snapshot) matching
+  #+END_SRC
+
+  =Compiler= is indeed a complex monad, but you can use snapshots safely and
+   lazily.
+
+3. Remember to build your project after modifying =site.hs=. 
+   
+   =stack exec site rebuild= can only compile those things that you assigned in =site.hs= 
+
+
+4. I use [[http://getmdl.io][Material Design Lite]] to reduce my CSS work, but the theme is far from
+   perfect. I will redesign a new one in the future, but now, it works for me.
+
+   Some design rules I think matter:
+   + The homepage should be looked through with the latest article at once.
+   + The tag page should list all posts related with the tag, and every post with its teaser, so I can find the right post correctly.
+   + The archive page keep the posts list only.
+   + Distraction should be reduced to minimize by leaving some blank area and using color composition.
+    
+     
+That's all, thank you.
+   
