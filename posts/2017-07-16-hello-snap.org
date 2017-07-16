@@ -1,0 +1,75 @@
+---
+title: Hello Snap
+tags: Haskell, Server
+---
+
+First, you need to install snap and snap-templates. If you use stack, you should
+modify global config file .stack/global-project/stack.yaml:
+
+#+BEGIN_SRC yaml
+# add extra-deps
+extra-deps:
+- heist-1.0.1.0
+- map-syntax-0.2.0.2
+#+END_SRC
+
+Now, you can init it.
+
+#+BEGIN_SRC shell
+mkdir mysnapproject
+cd mysnapproject
+snap init barebones
+stack init
+stack build
+#+END_SRC
+
+It's time to start it. Visiting http://localhost:9999, you will get a very simple page, just echo "hello world".
+
+#+BEGIN_SRC shell
+stack exec mysnapproject -- -p 9999
+#+END_SRC
+
+=snap init barebones= creates a single file in the src directory, Main.hs.
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE OverloadedStrings #-}
+module Main where
+
+import           Control.Applicative
+import           Snap.Core
+import           Snap.Util.FileServe
+import           Snap.Http.Server
+
+main :: IO ()
+main = quickHttpServe site
+
+site :: Snap ()
+site =
+    ifTop (writeBS "hello world") <|>
+    route [ ("foo", writeBS "bar")
+          , ("echo/:echoparam", echoHandler)
+          ] <|>
+    dir "static" (serveDirectory ".")
+
+echoHandler :: Snap ()
+echoHandler = do
+    param <- getParam "echoparam"
+    maybe (writeBS "must specify echo/param in URL")
+          writeBS param
+
+#+END_SRC
+
+- =ifTop= only executes its argument if the client requested the root URL (http://localhost:9999/). Use
+  this for your home page.
+- =route= takes a list of (route, handler) tuples and succeeds returning the
+  result of the associated handler of the route that matches.
+- =dir= and =serveDirectory= can be used to support static resources. If you
+  visit http://localhost:9999/static/src/Main.hs , can read the source from your
+  browser. You can make a new directory, for your static files. For example,
+  =serveDirectory "public"=, and you can visit
+  http://localhost:9999/static/your.js to download your.js from your public
+  directory.
+
+That's all. I hope I have whetted your appetite for using Snap. I intend to
+write more about introduction to snap, but a idea about marco in Lisp compare
+Haskell burst into my mind. So I have to stop it.
