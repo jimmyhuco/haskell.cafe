@@ -4,7 +4,7 @@ tags: Haskell, Server
 ---
 
 First, you need to install snap and snap-templates. If you use stack, you should
-modify global config file .stack/global-project/stack.yaml:
+modify global config file =.stack/global-project/stack.yaml=:
 
 #+BEGIN_SRC yaml
 # add extra-deps
@@ -13,9 +13,14 @@ extra-deps:
 - map-syntax-0.2.0.2
 #+END_SRC
 
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
 Now, you can init it.
 
 #+BEGIN_SRC shell
+stack install snap snap-templates
 mkdir mysnapproject
 cd mysnapproject
 snap init barebones

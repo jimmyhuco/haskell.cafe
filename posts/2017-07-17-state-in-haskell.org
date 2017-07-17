@@ -12,8 +12,13 @@ your a feel "code is data and data also is code"
 
 Let's to have a look at an interesting problem: Lets say that you went on a trip
 with 3 friends, and there are some costs that are shared by everyone. You want
-to record these expenses and then everyone can pay up once the trip is over. You
-can look more information from[[http://www.lpenz.org/articles/hedsl-sharedexpenses/][ Haskell eDSL Tutorial - Shared expenses]].
+to record these expenses and then everyone can pay up once the trip is over.
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+You can look more information from[[http://www.lpenz.org/articles/hedsl-sharedexpenses/][ Haskell eDSL Tutorial - Shared expenses]].
 
 #+BEGIN_SRC haskell
 import Control.Monad.State
