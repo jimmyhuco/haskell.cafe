@@ -1,0 +1,113 @@
+---
+title: State in Haskell
+tags: Haskell, Thinking
+---
+
+You can not reassign variable in Haskell, it's pure functional programming
+language. But you have to save state in real world, how to do it?
+
+Haskell use high order function to solve this problem. We can define a type for
+=(oldState) -> (someValue, newState)=, and make it into a monad. Monad can give
+your a feel "code is data and data also is code"
+
+Let's to have a look at an interesting problem: Lets say that you went on a trip
+with 3 friends, and there are some costs that are shared by everyone. You want
+to record these expenses and then everyone can pay up once the trip is over. You
+can look more information from[[http://www.lpenz.org/articles/hedsl-sharedexpenses/][ Haskell eDSL Tutorial - Shared expenses]].
+
+#+BEGIN_SRC haskell
+import Control.Monad.State
+import Data.Map as Map
+
+newtype Person = Person
+  { name :: String
+  } deriving (Eq, Ord, Show)
+
+dexter = Person "Dexter"
+
+angel = Person "Angel"
+
+debra = Person "Debra"
+
+harry = Person "Harry"
+
+spent :: Person -> Int -> State (Map Person Int) ()
+spent payer money = modify $ insertWith (+) payer money
+
+gave :: Person -> Person -> Int -> State (Map Person Int) ()
+gave lender borrower money =
+  modify $ (adjust (+ money) lender) . (adjust (\m -> m - money) borrower)
+
+solve st = solve' err $ Map.map (\m -> m - avg) st
+  where
+    err = 1 + size st
+    avg = round $ (toRational $ fold (+) 0 st) / (toRational $ size st)
+
+solve' _ st
+  | Map.null st = []
+solve' err st =
+  (name payer ++ " pays " ++ show amount ++ " to " ++ name receiver) :
+  solve' err newstate
+  where
+    (payer, debt) = foldrWithKey (getpers True) (Person "", 0) st
+    (receiver, credit) = foldrWithKey (getpers False) (Person "", 0) st
+    getpers True p m (_, m0)
+      | m < m0 = (p, m) -- Gets payer.
+    getpers False p m (_, m0)
+      | m > m0 = (p, m) -- Gets receiver.
+    getpers _ _ _ e = e
+    amount = min (-debt) credit
+    newstate = Map.filter (\c -> c < -err || err < c) $ mapWithKey statefix st
+    statefix p m
+      | p == receiver = m - amount
+    statefix p m
+      | p == payer = m + amount
+    statefix _ m = m
+
+sharedexpenses :: State (Map Person Int) () -> Map Person Int
+sharedexpenses f = execState f empty
+
+trip =
+  sharedexpenses $ do
+    dexter `spent` 5300
+    angel `spent` 2700
+    debra `spent` 800
+    harry `spent` 1900
+    debra `spent` 1700
+    angel `spent` 2200
+    dexter `gave` harry $ 2000
+    angel `gave` debra $ 3200
+
+main :: IO ()
+main = mapM_ putStrLn $ solve trip
+#+END_SRC
+
+If you load these code into ghci and run =main= function, you will get the output:
+
+#+BEGIN_EXAMPLE
+Debra pays 4350 to Angel
+Harry pays 3650 to Dexter
+Harry pays 100 to Angel
+#+END_EXAMPLE
+
+Ok, it seems cool! But do you think it's more complex than impure programming languages implementation?
+
+
+
+*Think about it!*
+
+
+
+I think the things worthy you to learn is the simple algorithm =solve= and eDSL style rather than state transform.
+
+The algorithm use a =err= to terminal recursion.
+
+1. get average cost by =avg = round $ (toRational $ fold (+) 0 st) / (toRational $ size st)=, this case is 3650
+2. change every person's amount by =Map.map (\m -> m - avg) st=, this case is
+   Angel=4450 ,Debra=-4350, Dexter=3650, Harry=-3750
+3. get payer(minimize amount) and receiver(maximize amount), and change both person with =min (-debt) credit=
+4. if someone's amount is between [-err, err], remove it from map
+5. repeat call solve' until map is []
+
+Recently, I write some Haskell code, I find that it's not nature, introducing
+many complex concepts, making simple complex. Is it reasonable?
