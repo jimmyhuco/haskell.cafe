@@ -1,0 +1,151 @@
+---
+title: State Transformer in Haskell
+tags: Haskell 
+---
+
+I think the most feature you have ever heard is about "referentially transparent". But, what is "referentially transparent"?
+
+#+BEGIN_QUOTE
+The term "referential transparency" comes from analytical philosophy, the branch
+of philosophy that analyzes natural language constructs, statements, and
+arguments based on the methods of logic and mathematics.
+
+A context in a sentence is "referentially transparent" if replacing a term in
+that context by another term that refers to the same entity doesn't alter the
+meaning. For example
+
+The Scottish Parliament meets in the capital of Scotland.
+
+means the same as
+
+The Scottish Parliament meets in Edinburgh.
+
+So the context "The Scottish Parliament meets in ..." is a referentially
+transparent context. We can replace "the capital of Scotland" with "Edinburgh"
+without altering the meaning. To put another way, the context only cares about
+what the term refers to and nothing else. That is the sense in which the context
+is "referentially transparent."
+#+END_QUOTE
+
+How about in *functional* programming?
+
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+For functions or expression, it usually means that an functions with same input
+or expression always evaluates to the same result in any context which makes it
+easier to reason about the behavior of programs.
+
+It's pure world, but real world isn't. Of course, you want to have your cake and
+eat it. *Types masters!*
+
+Haskell use many types to solve real world problem as keeping states in pure functions.
+
+Using =Control.Monad.State= is a option, filling memory blocks in a pure manner.
+You can look some sample code from my previous article [[http://haskell.cafe/posts/2017-07-17-state-in-haskell.html][State in Haskell]]. However
+you can use a thread model version =Control.Monad.ST=.
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE OverloadedStrings #-}
+
+import Control.Monad.ST
+import Data.STRef
+
+swap :: STRef s a -> STRef s a -> ST s ()
+swap v w = do
+  a <- readSTRef v
+  b <- readSTRef w
+  writeSTRef v b
+  writeSTRef w a
+
+trySwap :: String
+trySwap =
+  runST $
+  do s1 <- newSTRef "hello a"
+     s2 <- newSTRef "hello b"
+     swap s1 s2
+     str1 <- readSTRef s1
+     str2 <- readSTRef s2
+     newSTRef $ "s1 now is " ++ str1 ++ ", s2 now is " ++ str2
+     >>= readSTRef
+#+END_SRC
+
+It's very similar to =Control.Monad.State=, but ST use type =STRef s a= to store the
+state.
+
+You should pay attention to some functions' type signatures.
+
+#+BEGIN_SRC haskell
+newSTRef :: a -> ST s (STRef s a)
+readSTRef :: STRef s a -> ST s a
+writeSTRef :: STRef s a -> a -> ST s ()
+runST :: (forall s. ST s a) -> a
+#+END_SRC
+
+You have to compose =newSTRef= and =readSTRef= with Monad =bind= operator and
+=runST= to get the result(not final state). You may think you can use =runST= to
+get the state, but it can't.
+
+#+BEGIN_SRC haskell
+ΠΣ: runST $ newSTRef "hello a"
+
+<interactive>:41:9: error:
+    • Couldn't match type ‘a’ with ‘STRef s [Char]’
+        because type variable ‘s’ would escape its scope
+      This (rigid, skolem) type variable is bound by
+        a type expected by the context:
+          ST s a
+        at <interactive>:41:1-26
+      Expected type: ST s a
+        Actual type: ST s (STRef s [Char])
+    • In the second argument of ‘($)’, namely ‘newSTRef "hello a"’
+      In the expression: runST $ newSTRef "hello a"
+      In an equation for ‘it’: it = runST $ newSTRef "hello a"
+    • Relevant bindings include it :: a (bound at <interactive>:41:1)
+
+#+END_SRC
+
+Why? 
+
+The ghci obviously said something you quite understand. You should forgive him,
+he is not[[https://en.wikipedia.org/wiki/Steve_Jobs][ Steve Jobs]]. The error give you a chance to dive into the
+implementation of ST.
+
+=runST= will start a thread to run computations in =ST s a=. A value of type (ST
+s a) is a computation which transform a state indexed by type s, and delivers a
+value of type a. State transformers can be composed in sequence to form a large
+state transformer, using =bind=. If I can get the reference refX allocated in
+some =runST='s thread by =runST $ newSTRef "hello a"= , and use it like this:
+=runST (readSTRef refX)=. It isn't referentially transparent. Order matters! For
+more information, you can read the paper "[[http://dl.acm.org/citation.cfm?id=178246][Lazy functional state threads]]".
+
+But, wait. How to fix it? *Type matters again!*
+
+=Control.Monad.ST= introduced rank2types. Oh, what's rank2types? It's higher rank types.
+
+#+BEGIN_QUOTE
+Higher rank types are types containing type variables that are locally
+quantified. Type inference for such types is not decidable.
+#+END_QUOTE
+
+Let's look the code below carefully:
+
+#+BEGIN_SRC haskell
+let v = runST (newSTRef True) -- thread 1
+in runST (readSTRef v)        -- thread 2
+#+END_SRC
+
+The explicit quantification of the type =runST= is =runST :: forall a. (forall
+s. ST s a) -> a=. If let v is not wrong, =readSTRef v:: ST s Bool= obviously =s=
+have been generated in thread 1, but when =runST= to start a new thread(thread
+2), type of s should not be decided before. The rank2types declares it. In this
+case, =forall= is \forall in Math.
+
+rankNtypes just add a deepen (\forall in Math) =forall=, so you can not set its
+type. For newbie, the really problem is that you have to understand many new
+concepts first, but books normally don't include them. For example: rankNtypes,
+GADTs, DataKinds and so on. I will cook them later. Take it easy.
+
+Ok, it's time to close, a little long. Hope it is useful to you.
