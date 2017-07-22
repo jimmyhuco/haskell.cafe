@@ -117,7 +117,7 @@ implementation of ST.
 s a) is a computation which transform a state indexed by type s, and delivers a
 value of type a. State transformers can be composed in sequence to form a large
 state transformer, using =bind=. If I can get the reference refX allocated in
-some =runST='s thread by =runST $ newSTRef "hello a"= , and use it like this:
+some =runST='s thread by =runST (newSTRef "hello a")= , and use it like this:
 =runST (readSTRef refX)=. It isn't referentially transparent. Order matters! For
 more information, you can read the paper "[[http://dl.acm.org/citation.cfm?id=178246][Lazy functional state threads]]".
 
