@@ -1,0 +1,104 @@
+---
+title: IORef and MVar in Haskell
+tags: Haskell 
+---
+
+Before I write some advanced type level skills, I decide to talk more about changing state in Haskell.
+
+In previous posts, I introduced [[http://haskell.cafe/posts/2017-07-17-state-in-haskell.html][Control.Monad.State]] and [[http://haskell.cafe/posts/2017-07-21-st-in-haskell.html][Control.Monad.ST]].
+=State= doesn't actually use mutable state in its implementation. Instead, the
+program is parameterized by the state value (i.e. the state is an additional
+parameter to all computations). But =ST= is implemented as actual mutable memory on
+the machine and also very efficient.
+
+Life is hard, so Haskell gives your more helpers. They are =IORef= and =MVar=.
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+=IORef= provide a more convenient way to change the state. State is shared
+between all threads. In fact, =ST= is the weaker version of =IORef=. Look at the
+demo code below:
+
+#+BEGIN_SRC haskell
+module IORefDemo where
+
+import Control.Concurrent
+import Control.Monad
+import Data.IORef
+import System.IO
+
+main :: IO ()
+main = do
+  counter <- newIORef 0
+  forkIO $
+    forever $ do
+      c <- readIORef counter
+      atomicWriteIORef counter (c + 1)
+      threadDelay 1000
+  forever $ do
+    c <- readIORef counter
+    putStrLn $ "current counter is " ++ show c
+    threadDelay 1000
+#+END_SRC
+
+- use =newIORef= to create a state in main thread.
+- use =forkIO= to create a new sub thread to modify the state counter.
+- use =forever= to repeat the =do= actions.
+- use =readIORef= to read the counter number.
+- use =atomicWriteIORef= to prevent race conditions and increase counter by one.
+- use =threadDelay= to delay 1 second between next =do= actions.
+- If we do not hold on the main thread, sub threads will be terminated when main
+  thread has finished. So we use =forever= in main.
+
+But sometimes you want to know the exact time who is ready for next action.
+=IORef= with =atomicXXX= can only prevent race conditions in memory operations.
+
+Never worry about it. =MVar= will give your a big help.
+
+=MVar= carries two values:
+
+- the value you want to read or write
+- the state itself having value or not
+
+Look at the demo below again:
+
+#+BEGIN_SRC haskell
+module MvarDemo where
+
+import Control.Concurrent
+import Control.Concurrent.MVar
+import Control.Monad
+import System.IO
+
+main :: IO ()
+main = do
+  fileA <- newEmptyMVar
+  fileB <- newEmptyMVar
+  forkIO $ readFile "data/A.txt" >>= putMVar fileA
+  forkIO $ readFile "data/B.txt" >>= putMVar fileB
+  a <- readMVar fileA
+  b <- readMVar fileB
+  putStr $ a ++ b
+#+END_SRC
+
+- =newEmptyMVar= Create an =MVar= which is initially empty.
+- =putMVar= Write a value into an =MVar=. If the =MVar= is currently full,
+  =putMVar= will wait until it becomes empty. If there are multiple threads
+  blocked in =putMVar=, and the =MVar= becomes empty, only one thread will be woken
+  up.
+- =readMVar= Atomically read the contents of an =MVar=. If the =MVar= is
+  currently empty, =readMVar= will wait until its full. It's also single-wakeup
+  like =putMVar=.
+- You can use =newMVar= to create an =MVar= which contains the supplied value.
+
+So far we have met =State=, =ST=, =IORef= and =MVar=, you can have a basic
+feeling about them. But in real world Haskell code, you may use
+=Control.Concurrent.Async= library.
+
+If you want to know more about =MVar=, even =TVar=, you'd better read the
+book [[http://shop.oreilly.com/product/0636920026365.do?cmp=af-code-books-video-product_cj_0636920026365_7244489][Parallel and Concurrent Programming in Haskell]] by Simon Marlow.
+
+
+I just give you a very little introduction to these skills, hope it is useful to you.
