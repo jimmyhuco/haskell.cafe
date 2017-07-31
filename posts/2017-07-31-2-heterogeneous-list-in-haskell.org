@@ -16,7 +16,12 @@ How dose Haskell complete this task with strong type system? Many ways.
 *** Method 1: You can use =data= to definite a new type with enough data constructors.
     
 #+BEGIN_SRC haskell
-data Foo = FooInt Int | FooString String | FooChar Char | FooBool Bool
+data Foo
+  = FooInt Int
+  | FooString String
+  | FooChar Char
+  | FooBool Bool
+
 xs = [FooInt 3, FooString "hello", FooChar 'a', FooBool True, FooInt 10]
 #+END_SRC
 
