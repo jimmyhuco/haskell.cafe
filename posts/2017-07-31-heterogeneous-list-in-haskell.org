@@ -1,0 +1,130 @@
+---
+title: Heterogeneous List in Haskell
+tags: Haskell 
+---
+
+A List or collection that stores entries of different types is heterogeneous.
+Like Javascript, you can append any type of element into to a array. Sometimes
+it's very powerful, sometimes it's not safe.
+
+How dose Haskell complete this task with strong type system? Many ways.
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+*** Method 1: You can use =data= to definite a new type with enough data constructors.
+    
+#+BEGIN_SRC haskell
+data Foo = FooInt Int | FooString String | FooChar Char | FooBool Bool
+xs = [FooInt 3, FooString "hello", FooChar 'a', FooBool True, FooInt 10]
+#+END_SRC
+
+*** Method 2: use =Dynamic= typeclass
+    
+First, you should have a look at =Typeable=
+    
+#+BEGIN_SRC haskell
+ΠΣ: import Data.Typeable
+ΠΣ: data T a = T a deriving (Typeable, Show)
+ΠΣ: typeOf (T 3)
+T Integer
+ΠΣ: typeOf (T "hello")
+T [Char]
+typeOf :: Typeable a => a -> TypeRep
+ΠΣ: typeRepTyCon $ typeOf (T 3)
+T
+ΠΣ: tyConPackage $ typeRepTyCon $ typeOf (T 3)
+"interactive"
+ΠΣ: typeRepFingerprint $ typeOf (T 3)
+cfec44d53d3c80060e1c72e0297e439c
+#+END_SRC
+
+=typeOf= is very similar with typeof/instanceof in Javascript. You can definite
+a type deriving from =Typeable= and these magic are ready for you. Be careful,
+you can not manual implement =Typeable= instance. Using =typeRepTyCon= can give
+your more information about constructor, =typeRepFingerprint= will give your a
+unique fingerprint. That's cool.
+
+In fact, as of GHC 7.10, language extension =AutoDeriveTypeable= is not needed,
+it's enabled default. So every types are instance of =Typeable=. But [[https://ghc.haskell.org/trac/ghc/ticket/13276][Unboxed sums are not Typeable]].
+
+And then, you should know =Proxy= type, it's very interesting, it's phantom type.
+
+#+BEGIN_SRC haskell
+ΠΣ: :i Proxy
+type role Proxy phantom
+data Proxy (t :: k) = Proxy
+        -- Defined in ‘Data.Proxy’
+#+END_SRC
+
+If you want to get some exact type, you can do it like this:
+
+#+BEGIN_SRC haskell
+ΠΣ: :t typeRep
+typeRep :: Typeable a => proxy a -> TypeRep
+ΠΣ: typeRep (Proxy :: Proxy Int)
+Int
+ΠΣ: typeRep (Proxy :: Proxy (Int -> Double))
+Int -> Double
+#+END_SRC
+
+Now, it's time to introduce =Dynamic=.
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE MultiWayIf #-}
+
+module DynamicDemo where
+import Data.Dynamic
+import Data.Typeable
+
+heteroList :: [Dynamic]
+heteroList = [toDyn (100 :: Int), toDyn "hello dynamic", toDyn 'a']
+
+processHetero :: Dynamic -> String
+processHetero x =
+  let xRep = dynTypeRep x
+  in if | xRep == intRep -> show (fromDyn x (0 :: Int))
+        | xRep == strRep -> show (fromDyn x "")
+        | xRep == chrRep -> show (fromDyn x '?')
+
+intRep = typeRep (Proxy :: Proxy Int)
+
+strRep = typeRep (Proxy :: Proxy String)
+
+chrRep = typeRep (Proxy :: Proxy Char)
+#+END_SRC
+
+Hey, it's cool? We just use =Typeable=, =Proxy= and =Dynamic=.
+
+- =toDyn :: Typeable a => a -> Dynamic= can convert a type that is =Typeable= instance into Dynamic.
+- =dynTypeRep :: Dynamic -> TypeRep= can get the =Dynamic= type representation that we compare later.
+- We can define =TypeRep= with =Proxy= like =intRep=, =strRep=, =chrRep= in the code above.
+
+So you have a really true heterogeneous list =heteroList=.
+
+*** Method 3: use language extension =LANGUAGE ExistentialQuantification=
+    
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE ExistentialQuantification #-}
+
+module ExistDemo where
+
+data DynE =
+  forall a. Show a =>
+            MkDynE a
+
+instance Show DynE where
+  show (MkDynE a) = "DynE: " ++ show a
+
+heteroList :: [DynE]
+heteroList = [MkDynE 100, MkDynE "Hello", MkDynE True]
+
+main :: IO ()
+main = putStrLn $ concat $ map show heteroList
+#+END_SRC
+
+Notice that the type variable a in the type of =MkDynE= does not appear in the data type itself, which is plain =DynE=.
+
+Ok, that's all.
