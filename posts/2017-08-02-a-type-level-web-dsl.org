@@ -1,0 +1,418 @@
+---
+title: A Type-Level Web DSL
+tags: Haskell, Servant, DSL 
+---
+
+[[https://github.com/haskell-servant/servant][Servant]] is a type-level web dsl. When I first met her, she turned me on. I was curious to know more about
+her, especially how to design a library like servant. So I rolled up my sleeves
+and invite my friend called GHCi together to find out the mystery.
+
+But frankly, it's a hard trip. To reduce the burden of you, I try to write a
+mini servant like demo that let you pick up her easily.
+
+First, we have to say: "types, Types, TYPES ..." until ...
+
+Some code insert into your brain.
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+#+BEGIN_SRC haskell
+data Get (a :: *)
+
+data Capture (a :: *)
+#+END_SRC
+
+What? Don't ask why. Just follow me.
+
+Oh, you will get the error src_haskell{Illegal kind signature: ‘*’}. Because you can not
+give the kind explicitly. But *explicitness is better than implicitness*. You can
+enable ghc extension ={-# LANGUAGE KindSignatures #-}= to support this way.
+
+...... another code
+
+#+BEGIN_SRC haskell
+data a :<|> b
+infixr 8 :<|>
+
+data (a :: k) :> (b :: *)
+infixr 9 :>
+#+END_SRC
+
+Wow, what? Is it Haskell syntax? Yes, it is. And you will get two kinds of errors:
+
+- src_haskell{Illegal declaration of a type or class operator ‘:<|>’ and ':>'}
+- src_haskell{Unexpected kind variable ‘k’}
+
+Sure, you can extend Haskell language to a new level. For this case, enable two extensions:
+
+- ={-# LANGUAGE TypeOperators #-}= allow the use and definition of types with operator names, like =:<|>=, =:>=.
+- ={-# LANGUAGE PolyKinds #-}= allow kind polymorphic types, like =(a :: k)=, k can be =*= or =* -> *= and so on.
+
+Now, a paper appeared in your hand. It said:
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE KindSignatures #-}
+
+module MiniServant where
+
+data Get (a :: *)
+
+data Capture (a :: *)
+
+data a :<|> b
+
+infixr 8 :<|>
+
+data (a :: k) :> (b :: *)
+
+infixr 9 :>
+#+END_SRC
+
+And close your eyes.
+
+#+BEGIN_SRC haskell
+type MyAPI = "count" :> Get Int :<|> "hello" :> Capture String :> Get String
+#+END_SRC
+
+We use type level operator to build new type alias =MyAPI=, but we will
+encounter a new error src_haskell{Illegal type: ‘"count"’}. We use the string
+="count"= and ="hello"= in type level, that's not allowed.
+
+GHC always change the rules! Just enable ={-# LANGUAGE DataKinds #-}=. GHC
+supports numeric and string literals at the type level, giving convenient access
+to a large number of predefined type-level constants. Numeric literals are of
+kind =Nat=, while string literals are of kind =Symbol=. This feature is enabled
+by the =DataKinds= language extension.
+
+In fact, =DataKinds= allow promotion of data types to kind level. It's worthy another post.
+
+=data (a :: k) :> (b :: *)= make these right:
+
+- src_haskell{"count" :> Get Int -- * :> *}
+- src_haskell{Capture String :> Get String -- (* -> *) :> *}
+
+You can load miniservant.hs into your ghci, and you will know =MyAPI= is just
+type alias not data constructor.
+
+#+BEGIN_SRC haskell
+ΠΣ: :k MyAPI
+MyAPI :: *
+ΠΣ: :t MyAPI
+
+<interactive>:1:1: error: Data constructor not in scope: MyAPI
+#+END_SRC
+
+... ... ...
+
+... ... ...
+
+Suddenly, a lot of new code burst into your memory.
+
+#+BEGIN_SRC haskell
+type family Server api :: *
+
+type instance Server (Get a) = IO a
+
+type instance Server (a :<|> b) = Server a :<|> Server b
+
+type instance Server ((s :: Symbol) :> r) = Server r
+
+type instance Server (Capture a :> r) = a -> Server r
+#+END_SRC
+
+It included a lot of information. I will explain them later. First, you should
+enable ={-# LANGUAGE TypeFamilies #-}=.
+
+What's api? and What's the type family? It's a complex topic like =DataKinds=
+previous. But you can simply think that =TypeFamilies= allow you do some
+computations in type level, and =Server= is a type-level function.
+
+- When src_haskell{Server} met src_haskell{Get a}, final type is src_haskell{IO a}
+- When src_haskell{Server} met src_haskell{a :<|> b}, type change
+  to src_haskell{Server a :<|> Server b}, =Server a= or =Server b= can coninute to
+  compute its type.
+- When src_haskell{Server} met src_haskell{(s :: Symbol) :> r}, just ignore
+     Symbol s, so got src_haskell{Server r}, =Server r= also can coninute to
+     compute its type. But we will use Symbol s in =route= function.
+- When src_haskell{Server} met src_haskell{Capture a :> r}, we know we need a
+  parameter, it turned into src_haskell{a -> Server r}, =Server r= can coninute
+  to compute its type.
+
+
+
+So when the stronger =Server= met the elegant =MyAPI= 
+
+.........
+
+#+BEGIN_SRC haskell
+Server ("count" :> Get Int :<|> "hello" :> Capture Int :> Get String)
+
+~ Server ("count" :> Get Int) :<|> Server ("hello" :> Capture Int :> Get String)
+
+~ Server (Get Int) :<|> Server (Capture Int :> Get String)
+
+~ IO Int :<|> (Int -> Server (Get String))
+
+~ IO Int :<|> (Int -> IO String)
+
+~ IO Int :<|> (Int -> IO [Char])
+#+END_SRC
+
+(=~= is GHC’s syntax for type equality. I sometimes think that Haskell should rename to GHC.)
+
+.........
+
+
+Some one like batman give you the handlers: 
+#+BEGIN_SRC haskell
+handlers :: Server MyAPI
+handlers = undefined
+
+
+-- and whisper 
+ΠΣ: :t handlers
+handlers :: IO Int :<|> (Int -> IO [Char])
+#+END_SRC
+
+The real type of =handlers= is src_haskell{handlers :: IO Int :<|> (Int -> IO [Char])}
+
+It's as if we are living in a hazy dream world. And we already have known it in the dream.
+
+Because you think you are a great Haskeller, you try to define implement =handlers=. 
+
+#+BEGIN_SRC haskell
+handlerCount :: IO Int
+handlerCount = return 2017
+
+handlerHello :: Int -> IO String
+handlerHello n = return $ "Hello, n = " ++ (show n)
+
+handlers :: Server MyAPI
+handlers = handlerCount :<|> handlerHello
+#+END_SRC
+
+A little error will pause your step.
+
+#+BEGIN_SRC haskell
+Not in scope: data constructor ‘:<|>’
+#+END_SRC
+
+Because you haven't define =:<|>= data constructor, when you want to use it in
+value level, you have to define it.
+
+#+BEGIN_SRC haskell
+data a :<|> b = a :<|> b
+#+END_SRC
+
+OK, keep moving. You may wonder how to use =handlers=? The answer is quite
+simple, it's planned in =serve=.
+
+#+BEGIN_SRC haskell
+ΠΣ: import Servant.Server
+ΠΣ: :t serve
+serve
+  :: HasServer api '[] =>
+     Data.Proxy.Proxy api -> Server api -> Application
+ΠΣ: :i Server
+type Server (api :: k) = ServerT api Handler
+        -- Defined in ‘Servant.Server.Internal’
+ΠΣ: :i HasServer
+class HasServer (api :: k) (context :: [*]) where
+  type family ServerT (api :: k) (m :: * -> *) :: *
+  route :: Data.Proxy.Proxy api
+           -> Context context
+           -> Servant.Server.Internal.RoutingApplication.Delayed
+                env (Server api)
+           -> Servant.Server.Internal.Router.Router env
+  {-# MINIMAL route #-}
+        -- Defined in ‘Servant.Server.Internal’
+ΠΣ: :i Application
+type Application =
+  Network.Wai.Internal.Request
+  -> (Network.Wai.Internal.Response
+      -> IO Network.Wai.Internal.ResponseReceived)
+  -> IO Network.Wai.Internal.ResponseReceived
+        -- Defined in ‘Network.Wai’
+#+END_SRC
+
+So many codes .........
+
+"Hey, a lot of codes are very similar to previous. But some I can not understand." You asked.
+
+"Stop, just give me your hand, let's go" the man like batman answered.
+
+We use src_haskell{[String] -> IO String} to replace =Application= in servant.
+
+#+BEGIN_SRC haskell
+class HasServer api where
+  route :: Proxy api -> Server api -> [String] -> Maybe (IO String)
+
+serve :: HasServer api => Proxy api -> Server api -> [String] -> IO String
+serve p h xs =
+  case route p h xs of
+    Nothing -> ioError (userError "404")
+    Just m -> m
+#+END_SRC
+
+We define a typeclass =HasServer=, different instances will use different
+implementation of =route=, at last compute different type into different result.
+
+We will run real code like this:
+
+#+BEGIN_SRC haskell
+ΠΣ: serve (Proxy :: Proxy MyAPI) handlers ["hello", "2018"]
+"\"Hello, n = 2018\""
+ΠΣ: serve (Proxy :: Proxy MyAPI) handlers ["count"]
+"2017"
+ΠΣ: serve (Proxy :: Proxy MyAPI) handlers ["home"]
+*** Exception: user error (404)
+#+END_SRC
+
+In =Server= type function, we ignore string in types, but we wish use it in
+route (like path in servant). How to deal with it?
+
+Use =Proxy=. In fact, you have seen it in your dream.
+
+#+BEGIN_SRC haskell
+ΠΣ: import GHC.TypeLits
+ΠΣ: :set -XDataKinds
+ΠΣ: :t symbolVal
+symbolVal :: KnownSymbol n => proxy n -> String
+ΠΣ: symbolVal (Proxy :: Proxy "Hello World")
+"Hello World"
+#+END_SRC
+
+And we use =<|>= to try every possible handler function.
+
+The final code:
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
+module MiniServant where
+
+import Control.Applicative
+import Data.Proxy
+import GHC.TypeLits
+import Text.Read
+
+data Get (a :: *)
+
+data Capture (a :: *)
+
+data a :<|> b =
+  a :<|> b
+
+infixr 8 :<|>
+
+data (a :: k) :> (b :: *)
+
+infixr 9 :>
+
+type MyAPI = "count" :> Get Int :<|> "hello" :> Capture Int :> Get String
+
+type family Server api :: *
+
+type instance Server (Get a) = IO a
+
+type instance Server (a :<|> b) = Server a :<|> Server b
+
+type instance Server ((s :: Symbol) :> r) = Server r
+
+type instance Server (Capture a :> r) = a -> Server r
+
+handlerCount :: IO Int
+handlerCount = return 2017
+
+handlerHello :: Int -> IO String
+handlerHello n = return $ "Hello, n = " ++ (show n)
+
+handlers :: Server MyAPI
+handlers = handlerCount :<|> handlerHello
+
+class HasServer api where
+  route :: Proxy api -> Server api -> [String] -> Maybe (IO String)
+
+serve :: HasServer api => Proxy api -> Server api -> [String] -> IO String
+serve p h xs =
+  case route p h xs of
+    Nothing -> ioError (userError "404")
+    Just m -> m
+
+instance Show a => HasServer (Get a) where
+  route :: Proxy (Get a) -> IO a -> [String] -> Maybe (IO String)
+  route _ handler [] = Just (show <$> handler)
+  route _ _ _ = Nothing
+
+instance (HasServer a, HasServer b) => HasServer (a :<|> b) where
+  route ::
+       Proxy (a :<|> b)
+    -> (Server a :<|> Server b)
+    -> [String]
+    -> Maybe (IO String)
+  route _ (handlerA :<|> handlerB) xs =
+    route (Proxy :: Proxy a) handlerA xs <|>
+    route (Proxy :: Proxy b) handlerB xs
+
+instance (KnownSymbol s, HasServer r) => HasServer ((s :: Symbol) :> r) where
+  route :: Proxy (s :> r) -> Server r -> [String] -> Maybe (IO String)
+  route _ handler (x:xs)
+    | symbolVal (Proxy :: Proxy s) == x = route (Proxy :: Proxy r) handler xs
+  route _ _ _ = Nothing
+
+instance (Read a, HasServer r) => HasServer (Capture a :> r) where
+  route ::
+       Proxy (Capture a :> r)
+    -> (a -> Server r)
+    -> [String]
+    -> Maybe (IO String)
+  route _ handler (x:xs) = do
+    a <- readMaybe x
+    route (Proxy :: Proxy r) (handler a) xs
+  route _ _ _ = Nothing
+#+END_SRC
+
+There are three new extensions in the final code:
+
+- ={-# LANGUAGE InstanceSigs #-}=
+- ={-# LANGUAGE FlexibleInstances #-}=
+- ={-# LANGUAGE ScopedTypeVariables #-}=
+
+Trust me, [[https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/index.html][Glasgow Haskell Compiler User's Guide]] is your best friend.
+
+
+2027
+
+2026
+
+2025
+
+2024
+
+2023
+
+2022
+
+2021
+
+2020
+
+2019
+
+2018
+
+2017
+
+
+I have to get my car-max boy to sleep. Bye!
