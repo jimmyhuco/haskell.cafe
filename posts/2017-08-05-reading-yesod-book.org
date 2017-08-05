@@ -1,0 +1,420 @@
+---
+title: Reading Notes About Yesod Book Part One
+tags: Haskell, Server, Yesod
+---
+
+I want to build some ideas using [[http://www.yesodweb.com/][Yesod]]. The post below is some fragmentary
+reading notes while I'm reading "[[http://www.yesodweb.com/book][Yesod Web Framework Book- Version 1.4]]".
+
+Yesod is:
+
+- Type Safety
+- Concise: Most code generation is done at compile time via meta-programming
+- Performance: An architecture designed for performance.
+- Modular: Yesod has spawned the creation of dozens of packages, most of which
+  are usable in a context outside of Yesod itself.
+- A solid foundation: The Haskell community is constantly pushing the boundaries
+  finding the cleanest, most efficient solutions for each challenge. Yesod has
+  choosen for you.
+
+Follow [[http://www.yesodweb.com/page/quickstart][Yesod quick start guide]], you can install stack and create a new yesod
+project. After that, you will install relative libraries.
+
+For the vast majority of the book, the following command will install all the libraries you need:
+
+src_shell{stack build yesod persistent-sqlite yesod-static esqueleto}
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+Hello World in Yesod:
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE QuasiQuotes           #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeFamilies          #-}
+import           Yesod
+
+data HelloWorld = HelloWorld
+
+mkYesod "HelloWorld" [parseRoutes|
+/ HomeR GET
+|]
+
+instance Yesod HelloWorld
+
+getHomeR :: Handler Html
+getHomeR = defaultLayout [whamlet|Hello World!|]
+
+main :: IO ()
+main = warp 3000 HelloWorld
+#+END_SRC
+
+=mkYesod= is a Template Haskell function, and =parseRoutes= is a QuasiQuoter.
+*Real code in runtime is generated at compile time.* Yesod use =TemplateHaskell= and =QuasiQuotes=
+to do some meta programming.
+
+src_shell{stack runghc -- -ddump-splices src/helloworld.hs} will output the code
+generated at compile time.
+
+By making each resource a data constructor, we have a feature called type-safe URLs.
+
+#+BEGIN_SRC haskell
+instance RenderRoute Links where
+  data Route Links
+    = HomeR | Page1R | Page2R
+    deriving (Show, Eq, Read)
+  renderRoute HomeR = ([], [])
+  renderRoute Page1R
+    = (((Data.Text.pack "page1") GHC.Types.: []), [])
+  renderRoute Page2R
+    = (((Data.Text.pack "page2") GHC.Types.: []), [])
+#+END_SRC
+
+So we can use type-safe url in =QuasiQuotes=.
+
+#+BEGIN_SRC haskell
+getHomeR  = defaultLayout [whamlet|<a href=@{Page1R}>Go to page 1!|]
+getPage1R = defaultLayout [whamlet|<a href=@{Page2R}>Go to page 2!|]
+getPage2R = defaultLayout [whamlet|<a href=@{HomeR}>Go home!|]
+#+END_SRC
+
+Final links in html page are =/page1=, =/page2=, and =/=
+
+Yesod can serve up any kind of content you want. JSON data is just as easy, via the =aeson= package
+
+src_haskell{getHomeR  = return $ object ["msg" .= "Hello World"]}
+
+src_shell{stack exec -- yesod devel} automatically rebuilds and reloads your code for you. 
+
+Yesod uses the [[https://hackage.haskell.org/package/shakespeare][Shakespearean]] family of template languages as its standard approach to HTML, CSS and Javascript creation. 
+
+There are four main languages at play:
+
+Hamlet (HTML)
+
+#+BEGIN_SRC html
+$doctype 5
+<html>
+    <head>
+        <title>#{pageTitle} - My Site
+        <link rel=stylesheet href=@{Stylesheet}>
+    <body>
+        <h1 .page-title>#{pageTitle}
+        <p>Here is a list of your friends:
+        $if null friends
+            <p>Sorry, I lied, you don't have any friends.
+        $else
+            <ul>
+                $forall Friend name age <- friends
+                    <li>#{name} (#{age} years old)
+        <footer>^{copyright}
+#+END_SRC
+
+Lucius (CSS)
+
+#+BEGIN_SRC css
+section.blog {
+    padding: 1em;
+    border: 1px solid #000;
+    h1 {
+        color: #{headingColor};
+        background-image: url(@{MyBackgroundR});
+    }
+}
+#+END_SRC
+
+Cassius (CSS)
+
+The following is equivalent to the Lucius example above.
+
+#+BEGIN_SRC css
+section.blog
+    padding: 1em
+    border: 1px solid #000
+    h1
+        color: #{headingColor}
+        background-image: url(@{MyBackgroundR})
+#+END_SRC
+
+Julius (Javascript)
+
+#+BEGIN_SRC javascript
+$(function(){
+    $("section.#{sectionClass}").hide();
+    $("#mybutton").click(function(){document.location = "@{SomeRouteR}";});
+    ^{addBling}
+});
+#+END_SRC
+
+| datatype   | typeclass    |
+| Html       | ToMarkup     |
+| Css        | ToCss        |
+| Javascript | ToJavascript |
+
+tags in Hamlet use indentation to instead of using closing tags.
+
+#+BEGIN_SRC html
+<body>
+<p>Some paragraph.</p>
+<ul>
+<li>Item 1</li>
+<li>Item 2</li>
+</ul>
+</body>
+#+END_SRC
+
+would be
+
+#+BEGIN_SRC html
+<body>
+    <p>Some paragraph.
+    <ul>
+        <li>Item 1
+        <li>Item 2
+#+END_SRC
+
+*Hamlet does not escape entities within its content.* So you can copy and paste exists html snippets.
+
+ID and Class:
+
+#+BEGIN_SRC html
+<p #firstid>Paragraph <i .secondclass>italic end.
+#+END_SRC
+
+#+BEGIN_SRC html
+<p id="firstid">Paragraph <i class="secondclass">italic</i> end.</p>
+#+END_SRC
+
+variable interpolation 
+
+#+BEGIN_SRC html
+<head>
+    <title>#{title}
+#+END_SRC
+
+You can apply functions within an interpolation.
+
+#+BEGIN_SRC haskell
+main = putStrLn $ renderHtml [shamlet|
+<p>Hello, my name is #{name person} and I am #{show $ age person}.
+<p>
+    Let's do some funny stuff with my name: #
+    <b>#{sort $ map toLower (name person)}
+<p>Oh, and in 5 years I'll be #{show ((+) 5 (age person))} years old.
+|]
+  where
+    person = Person "Michael" 26
+#+END_SRC
+
+Type-safe urls are almost identical to variable interpolation in every way,
+except they start with an at-sign (=@=) instead. In addition, there is embedding
+via a caret (=^=) which allows you to embed another template of the same type.
+You should add =blaze-html= to your cabal file.
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
+import Text.Hamlet (HtmlUrl, hamlet)
+import Text.Blaze.Html.Renderer.String (renderHtml)
+import Data.Text (Text)
+
+data MyRoute = Home
+
+render :: MyRoute -> [(Text, Text)] -> Text
+render Home _ = "/home"
+
+footer :: HtmlUrl MyRoute
+footer = [hamlet|
+<footer>
+    Return to #
+    <a href=@{Home}>Homepage
+    .
+|]
+
+main :: IO ()
+main = putStrLn $ renderHtml $ [hamlet|
+<body>
+    <p>This is my page.
+    ^{footer}
+|] render
+#+END_SRC
+
+Creating paginated responses:
+
+#+BEGIN_SRC haskell
+main = do
+    let currPage = 2 :: Int
+    putStrLn $ renderHtml $ [hamlet|
+<p>
+    You are currently on page #{currPage}.
+    <a href=@?{(SomePage, [("page", pack $ show $ currPage - 1)])}>Previous
+    <a href=@?{(SomePage, [("page", pack $ show $ currPage + 1)])}>Next
+|] render
+#+END_SRC
+
+will generate:
+
+#+BEGIN_SRC html
+<p>You are currently on page 2.
+<a href="/home?page=1">Previous</a>
+<a href="/home?page=3">Next</a>
+</p>
+#+END_SRC
+
+To make a checkbox only checked if the variable isChecked is True, you would
+write src_html{<input type=checkbox :isChecked:checked>}. To have a paragraph be
+optionally red, you could use src_html{<p :isRed:style="color:red">}. (This also works for
+class names, e.g., src_html{<p :isCurrent:.current>} will set the class current if
+=isCurrent= is True.)
+
+Arbitrary key-value pairs can also be interpolated using the src_haskell{*{…}} syntax. The
+interpolated variable must be a tuple, or list of tuples, of Text or String. For
+example: if we have a variable src_haskell{attrs = [("foo", "bar")]}, we could interpolate
+that into an element like: =<p *{attrs}>= to get src_html{<p foo="bar">}.
+
+Minimalistic logic in template:
+
+#+BEGIN_SRC html
+$if isAdmin
+    <p>Welcome to the admin section.
+$elseif isLoggedIn
+    <p>You are not the administrator.
+$else
+    <p>I don't know who you are. Please log in so I can decide if you get access.
+    
+$maybe name <- maybeName
+    <p>Your name is #{name}
+$nothing
+    <p>I don't know your name.
+
+$maybe Person firstName lastName <- maybePerson
+    <p>Your name is #{firstName} #{lastName}
+    
+$if null people
+    <p>No people.
+$else
+    <ul>
+        $forall person <- people
+            <li>#{person}
+            
+$case foo
+    $of Left bar
+        <p>It was left: #{bar}
+    $of Right baz
+        <p>It was right: #{baz}
+#+END_SRC
+
+Declare a synonym for a long expression:
+
+#+BEGIN_SRC html
+$with foo <- some very (long ugly) expression that $ should only $ happen once
+    <p>But I'm going to use #{foo} multiple times. #{foo}
+#+END_SRC
+
+Lucius is very similar to [[http://sass-lang.com/guide][Scss]].
+
+Minixs:
+
+#+BEGIN_SRC haskell
+-- Our mixin, which provides a number of vendor prefixes for transitions.
+transition val =
+    [luciusMixin|
+        -webkit-transition: #{val};
+        -moz-transition: #{val};
+        -ms-transition: #{val};
+        -o-transition: #{val};
+        transition: #{val};
+    |]
+
+-- Our actual Lucius template, which uses the mixin.
+myCSS =
+    [lucius|
+        .some-class {
+            ^{transition "all 4s ease"}
+        }
+    |]
+#+END_SRC
+
+Cassius is very similar to [[http://sass-lang.com/guide][Sass]].
+
+Julius is just javascript. I think there is a better choice for me.
+
+There are two different ways to call out to Shakespeare from your Haskell code:
+
+- Quasiquotes: For short templates
+- External file: In general it is recommended
+
+main.hs:
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE OverloadedStrings #-} -- we're using Text below
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-} -- to control production versus debug
+import Text.Lucius (CssUrl, luciusFile, luciusFileReload, renderCss)
+import Data.Text (Text)
+import qualified Data.Text.Lazy.IO as TLIO
+
+data MyRoute = Home | Time | Stylesheet
+
+render :: MyRoute -> [(Text, Text)] -> Text
+render Home _ = "/home"
+render Time _ = "/time"
+render Stylesheet _ = "/style.css"
+
+template :: CssUrl MyRoute
+#if PRODUCTION
+template = $(luciusFile "template.lucius")
+#else
+template = $(luciusFileReload "template.lucius")
+#endif
+
+main :: IO ()
+main = TLIO.putStrLn $ renderCss $ template render
+#+END_SRC
+
+template.lucius: 
+
+#+BEGIN_SRC haskell
+-- @template.lucius
+foo { bar: baz }
+#+END_SRC
+
+Alternate Hamlet Types:
+
+- =shamlet= To generate plain HTML without any embedded URLs, we use "simplified Hamlet".
+- =ihamlet= internationalized messages
+- =hamlet= widgets
+
+=shakespeare-text= provides a simple way to create interpolated strings.
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
+import Text.Shakespeare.Text
+import qualified Data.Text.Lazy.IO as TLIO
+import Data.Text (Text)
+import Control.Monad (forM_)
+
+data Item = Item
+    { itemName :: Text
+    , itemQty :: Int
+    }
+
+items :: [Item]
+items =
+    [ Item "apples" 5
+    , Item "bananas" 10
+    ]
+
+main :: IO ()
+main = forM_ items $ \item -> TLIO.putStrLn
+    [lt|You have #{show $ itemQty item} #{itemName item}.|]
+#+END_SRC
+
+If you use [[http://spacemacs.org/][spacemacs]], you can set =dotspacemacs-additional-packages= to use [[https://github.com/CodyReichert/shakespeare-mode][shakespeare-mode]].
+
+#+BEGIN_SRC emacs
+dotspacemacs-additional-packages '(shakespeare-mode)
+#+END_SRC
