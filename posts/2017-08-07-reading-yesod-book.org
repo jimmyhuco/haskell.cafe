@@ -1,0 +1,242 @@
+---
+title: Reading Notes About Yesod Book Part Three
+tags: Haskell, Server, Yesod
+---
+
+The post below is some fragmentary reading notes while I'm reading "[[http://www.yesodweb.com/book][Yesod Web
+Framework Book- Version 1.4]]". This is part three, [[http://haskell.cafe/posts/2017-08-05-reading-yesod-book.html][previous is part two]].
+
+The book is a little outdated. [[https://www.stackage.org/haddock/lts-9.0/yesod-core-1.4.35.1/Yesod-Core.html#t:Yesod][Yesod]] haddock document is your friend.
+
+Yesod defines a Domain Specific Language (DSL) for specifying routes, and
+provides Template Haskell functions to convert this DSL to Haskell code.
+
+One of the first thing Yesod does when it gets a request is split up the requested path into pieces.
+
+#+BEGIN_SRC haskell
+toPieces "/" = []
+toPieces "/foo/bar/baz/" = ["foo", "bar", "baz", ""]
+toPieces "/foo/" = ["foo"]
+toPieces "/foo//" = ["foo"]
+#+END_SRC
+
+#+BEGIN_EXPORT html
+<!--more-->
+#+END_EXPORT
+
+There are three types of pieces:
+
+- Static =/foo/bar=
+- Dynamic single =/foo/#Text=
+- Dynamic multi =/foo/+Text Int Bool Person Car=
+
+turn off overlap checking
+
+#+BEGIN_SRC haskell
+/foo/bar    Foo1R GET
+!/foo/#Int  Foo2R GET
+!/foo/#Text Foo3R GET
+#+END_SRC
+
+You can use [[https://wiki.haskell.org/Smart_constructors][Smart constructors]] to placing extra constraints on the construction
+of values used in routes.
+
+Each resource pattern also has a name associated with it. That name will become
+the constructor for the type safe URL datatype associated with your application.
+By convention, these resource names all end with a capital R.
+
+#+BEGIN_SRC haskell
+data MyRoute = PersonR Text
+             | YearR Int
+             | FaqR
+
+             
+/person/#Text PersonR GET
+/year/#Int YearR Int
+/page/faq FaqR
+#+END_SRC
+
+ There are three options in Yesod to handle request.
+
+- A single handler function for all request methods on a given route.
+  
+  =/page/faq FaqR= handler is =handleFaqR=
+
+- A separate handler function for each request method on a given route. Any
+  other request method will generate a 405 Method Not Allowed response.
+
+  =/person/#String PersonR GET POST DELETE= handlers are =getPersonR=, =postPersonR= and =deletePersonR=
+
+- You want to pass off to a subsite.
+
+  =/static StaticR Static getStatic=
+
+Like =Widget= type, =Handler= data type is from =data HandlerT site m a= to
+=type Handler = HandlerT MyApp IO=, just a monad transformer.
+
+Many common data types are instances of =ToTypedContent= type class, including Html, Value
+(from the aeson package, representing JSON), Text, and even () (for representing
+an empty response).
+
+#+BEGIN_SRC haskell
+data TypedContent = TypedContent !ContentType !Content
+
+class ToTypedContent a where
+    toTypedContent :: a -> TypedContent
+
+#+END_SRC
+
+[[https://www.stackage.org/haddock/lts-9.0/yesod-core-1.4.35.1/Yesod-Core-Handler.html][Yesod.Core.Handler]] document give you more details about =Handler= monad.
+
+- =getYesod= If you store configuration values in your foundation, you will
+  probably end up using this function a lot.
+
+  #+BEGIN_SRC haskell
+  data App = App
+      { appSettings    :: AppSettings
+      , appStatic      :: Static -- ^ Settings for static file serving.
+      , appConnPool    :: ConnectionPool -- ^ Database connection pool.
+      , appHttpManager :: Manager
+      , appLogger      :: Logger
+      }
+  #+END_SRC
+
+  =master <- getYesod= master will have the value =App= record, so you can access =appSettings= by =appSettings master=.
+
+- =getRequest= return a =m YesodRequest=. =YesodRequest= is a record:
+
+  #+BEGIN_SRC haskell
+  data YesodRequest = YesodRequest
+      { reqGetParams  :: ![(Text, Text)]
+        -- ^ Same as 'W.queryString', but decoded to @Text@.
+      , reqCookies    :: ![(Text, Text)]
+      , reqWaiRequest :: !W.Request
+      , reqLangs      :: ![Text]
+        -- ^ Languages which the client supports. This is an ordered list by preference.
+      , reqToken      :: !(Maybe Text)
+        -- ^ A random, session-specific token used to prevent CSRF attacks.
+      , reqSession    :: !SessionMap
+        -- ^ Initial session sent from the client.
+        --
+        -- Since 1.2.0
+      , reqAccept     :: ![ContentType]
+        -- ^ An ordered list of the accepted content types.
+        --
+        -- Since 1.2.0
+      }
+  #+END_SRC
+
+- =lookupGetParam=, =lookupCookie= are shortcuts for reading =YesodRequest=
+  record. I think they are good place to learn Haskell coding skills.
+
+  #+BEGIN_SRC haskell
+  -- | Lookup for GET parameters.
+  lookupGetParams :: MonadHandler m => Text -> m [Text]
+  lookupGetParams pn = do
+      rr <- getRequest
+      return $ lookup' pn $ reqGetParams rr
+
+  -- | Lookup for GET parameters.
+  lookupGetParam :: MonadHandler m => Text -> m (Maybe Text)
+  lookupGetParam = fmap listToMaybe . lookupGetParams
+
+  -- | Lookup for cookie data.
+  lookupCookie :: MonadHandler m => Text -> m (Maybe Text)
+  lookupCookie = fmap listToMaybe . lookupCookies
+
+  -- | Lookup for cookie data.
+  lookupCookies :: MonadHandler m => Text -> m [Text]
+  lookupCookies pn = do
+      rr <- getRequest
+      return $ lookup' pn $ reqCookies rr
+  #+END_SRC
+  
+=MonadLogger= did a great job! It provides a number of convenience Template Haskell
+functions which will automatically insert source code location into the log
+messages.
+
+#+BEGIN_SRC haskell
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TypeFamilies      #-}
+import           Control.Exception (IOException, try)
+import           Control.Monad     (when)
+import           Yesod
+
+data App = App
+instance Yesod App where
+    -- This function controls which messages are logged
+    shouldLog App src level =
+        True -- good for development
+        -- level == LevelWarn || level == LevelError -- good for production
+
+mkYesod "App" [parseRoutes|
+/ HomeR GET
+|]
+
+getHomeR :: Handler Html
+getHomeR = do
+    $logDebug "Trying to read data file"
+    edata <- liftIO $ try $ readFile "datafile.txt"
+    case edata :: Either IOException String of
+        Left e -> do
+            $logError $ "Could not read datafile.txt"
+            defaultLayout [whamlet|An error occurred|]
+        Right str -> do
+            $logInfo "Reading of data file succeeded"
+            let ls = lines str
+            when (length ls < 5) $ $logWarn "Less than 5 lines of data"
+            defaultLayout
+                [whamlet|
+                    <ol>
+                        $forall l <- ls
+                            <li>#{l}
+                |]
+
+main :: IO ()
+main = warp 3000 App
+
+-- 07/Aug/2017:13:40:02 +0800 [Debug] Trying to read data file @(main:Main src/log.hs:22:5)
+-- 07/Aug/2017:13:40:02 +0800 [Error] Could not read datafile.txt @(main:Main src/log.hs:26:13)
+#+END_SRC
+
+=RedirectUrl= typeclass give you some magic to convert some value into a URL for redirects.
+
+#+BEGIN_SRC haskell
+getLink1R, getLink2R, getLink3R :: Handler ()
+getLink1R = redirect Link2R -- /link2
+getLink2R = redirect (Link3R, [("foo", "bar")]) -- /link3?foo=bar
+getLink3R = redirect $ Link4R :#: ("baz" :: Text) -- /link4#baz
+#+END_SRC
+
+Lookup the typeclass instances:
+
+#+BEGIN_SRC haskell
+-- | Some value which can be turned into a URL for redirects.
+class RedirectUrl master a where
+    -- | Converts the value to the URL and a list of query-string parameters.
+    toTextUrl :: (MonadHandler m, HandlerSite m ~ master) => a -> m Text
+
+instance RedirectUrl master Text where
+    toTextUrl = return
+
+instance RedirectUrl master String where
+    toTextUrl = toTextUrl . T.pack
+
+instance RedirectUrl master (Route master) where
+    toTextUrl url = do
+        r <- getUrlRender
+        return $ r url
+
+instance (key ~ Text, val ~ Text) => RedirectUrl master (Route master, [(key, val)]) where
+    toTextUrl (url, params) = do
+        r <- getUrlRenderParams
+        return $ r url params
+
+instance (key ~ Text, val ~ Text) => RedirectUrl master (Route master, Map.Map key val) where
+    toTextUrl (url, params) = toTextUrl (url, Map.toList params)
+#+END_SRC
+
+Now, I feel more and more that Yesod is teach me using simple type skills to
+build web, just simple records and monad transformers. It's a nice trip.
