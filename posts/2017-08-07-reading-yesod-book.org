@@ -4,7 +4,7 @@ tags: Haskell, Server, Yesod
 ---
 
 The post below is some fragmentary reading notes while I'm reading "[[http://www.yesodweb.com/book][Yesod Web
-Framework Book- Version 1.4]]". This is part three, [[http://haskell.cafe/posts/2017-08-05-reading-yesod-book.html][previous is part two]].
+Framework Book- Version 1.4]]". This is part three, [[http://haskell.cafe/posts/2017-08-06-reading-yesod-book.html][previous is part two]].
 
 The book is a little outdated. [[https://www.stackage.org/haddock/lts-9.0/yesod-core-1.4.35.1/Yesod-Core.html#t:Yesod][Yesod]] haddock document is your friend.
 
